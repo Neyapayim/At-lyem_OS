@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Atölye OS</title>
+  <title>AtÃ¶lye OS</title>
   <style>
     body { margin: 0; padding: 0; }
     #root { width: 100%; height: 100vh; }
@@ -11,13 +11,11 @@
 </head>
 <body>
   <div id="root"></div>
-
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
   <script type="text/babel">
-
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  ATÖLYE OS — ENGINE & REPOSITORY KATMANI                    ║
@@ -1426,7 +1424,7 @@ function useStored(key, init) {
 // ════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ════════════════════════════════════════════════════════════════════════════
-function App(){
+export default function App(){
   const [tab,setTab]               = useState("dashboard");
   const [mounted,setMounted]       = useState(false);
   const [time,setTime]             = useState(new Date());
@@ -1788,7 +1786,7 @@ function App(){
             const bugununTarihi = new Date().toLocaleDateString("tr-TR",{day:"numeric",month:"long",year:"numeric",weekday:"long"});
             return(
             <div style={{animation:"fade-up .4s ease"}}>
-              <PageHeader title="Fabrika Kontrol Paneli" sub={bugununTarihi}
+              <PageHeader title="Fabrika Kontrol Paneli v2" sub={bugununTarihi}
                 action={<Btn variant="primary" onClick={()=>setModal({type:"yeniUretimEmri",data:{}})}>+ Üretim Emri</Btn>}/>
               {/* KPIs */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:22}}>
@@ -10067,10 +10065,6 @@ Sadece JSON döndür, başka hiçbir şey yazma:
   );
 }
 
-    // Render App
-    const { useState, useEffect, useCallback, useRef, useMemo } = React;
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
   </script>
 </body>
 </html>
