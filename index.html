@@ -1385,6 +1385,7 @@ const NAV_ITEMS = [
   {section:"TİCARET", items:[
     {id:"musteriler", label:"Müşteriler",     icon:"👥"},
     {id:"siparisler", label:"Siparişler",     icon:"📋"},
+    {id:"hizli_satis",label:"Hızlı Satış",    icon:"⚡"},
     {id:"sevkiyat",   label:"Sevkiyat",       icon:"🚚"},
   ]},
   {section:"ÜRETİM", items:[
@@ -1463,6 +1464,7 @@ export default function App(){
   const [fasonIsler,   setFasonIsler]  = useStored("fasonIsler",  []);
   const [tedarikSiparisleri, setTedarikSiparisleri] = useStored("tedarikSiparisleri", []);
   const [nakliyeKayitlari, setNakliyeKayitlari] = useStored("nakliyeKayitlari", []);
+  const [hizliSatislar, setHizliSatislar] = useStored("hizliSatislar", []);
   const [uretimEmirleriRaw,setUretimEmirleri] = useStored("uretimEmirleri", []);
   // localStorage'daki eski demo verileri otomatik temizle
   const uretimEmirleri = uretimEmirleriRaw.filter(e=>!e.id?.startsWith("ue-demo"));
@@ -1477,6 +1479,7 @@ export default function App(){
   // Modal states
   const [modal,setModal]           = useState(null); // {type, data}
   const [expSiparis,setExpSiparis] = useState(null);
+  const [hsModal,setHsModal]       = useState(false);
 
   // Atölye saniye sayacı
   useEffect(()=>{
@@ -1727,6 +1730,11 @@ export default function App(){
                     if(item.id==="fason_takip") {
                       const n=fasonIsler.filter(f=>f.durum==="gonderildi"||f.durum==="bekliyor").length;
                       return n>0?n:null;
+                    }
+                    if(item.id==="hizli_satis") {
+                      const bugun = new Date().toDateString();
+                      const n = hizliSatislar.filter(s => new Date(s.tarih).toDateString() === bugun).length;
+                      return n > 0 ? n : null;
                     }
                     return item.badge||null;
                   })();
@@ -4280,6 +4288,119 @@ export default function App(){
                 </div>
               )}
             </div>
+            );
+          })()}
+
+          {/* ─ HIZLI SATIŞ ─ */}
+          {tab==="hizli_satis"&&(()=>{
+            const bugun = new Date().toDateString();
+            const bugunSatislar = hizliSatislar.filter(s => new Date(s.tarih).toDateString() === bugun);
+            const bugunToplam = bugunSatislar.reduce((t,s) => t + (s.toplamTutar||0), 0);
+            const bugunAdet = bugunSatislar.reduce((t,s) => t + s.kalemler.reduce((a,k) => a + k.adet, 0), 0);
+            const satirSil = (id) => {
+              setHizliSatislar(prev => prev.filter(s => s.id !== id));
+            };
+            const handleSave = (satis) => {
+              // 1. Stok düş
+              const yeniUrunler = urunler.map(u => {
+                const kalem = satis.kalemler.find(k => k.urunId === u.id);
+                if(!kalem) return u;
+                const eskiStok = u.stok || u.miktar || 0;
+                const yeniStok = Math.max(0, eskiStok - kalem.adet);
+                // Stok hareketi kaydet
+                stokHareketiRepo.ekle({
+                  stokTipi: "urun", stokId: u.id,
+                  hareketTipi: "hizli_satis", miktar: -(kalem.adet),
+                  birim: "adet", oncekiBakiye: eskiStok, sonrakiBakiye: yeniStok,
+                  kaynakModul: "hizli_satis", referenceType: "hizli_satis",
+                  referenceId: satis.id,
+                  note: `Hızlı Satış: ${kalem.adet}x ${kalem.urunAd} → ${satis.musteriAd||"—"}`,
+                });
+                return { ...u, stok: yeniStok, miktar: yeniStok };
+              });
+              setUrunler(yeniUrunler);
+              // 2. Satış kaydı ekle
+              setHizliSatislar(prev => [satis, ...prev]);
+              setHsModal(false);
+            };
+            return(
+              <div style={{animation:"fade-up .4s ease"}}>
+                <PageHeader title="Hızlı Satış" sub="Stoktan anlık satış"
+                  action={<Btn variant="primary" color={C.mint} onClick={()=>setHsModal(true)}>⚡ Yeni Satış</Btn>}/>
+                {/* Günlük Özet KPI'ları */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:22}}>
+                  {[
+                    {l:"Bugünkü Satış",v:bugunSatislar.length,u:"işlem",col:C.cyan,icon:"🧾"},
+                    {l:"Satılan Ürün",v:bugunAdet,u:"adet",col:C.mint,icon:"📦"},
+                    {l:"Günlük Ciro",v:fmt(bugunToplam)+"₺",u:"",col:C.gold,icon:"💰",noFmt:true},
+                  ].map((k,i)=>(
+                    <div key={i} className="card" style={{
+                      background:"rgba(255,255,255,0.028)",
+                      backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",
+                      border:`1px solid ${k.col}18`,
+                      borderRadius:14,padding:"16px",
+                      boxShadow:`0 8px 32px rgba(0,0,0,.5),inset 0 0 20px ${k.col}05`,
+                      animation:`fade-up .4s ${i*.06}s ease both`}}>
+                      <div style={{fontSize:22,marginBottom:8}}>{k.icon}</div>
+                      <div style={{fontSize:26,fontWeight:700,color:k.col,fontFamily:F,letterSpacing:-.5,
+                        textShadow:`0 0 24px ${k.col}40`}}>
+                        {k.noFmt?k.v:k.v}<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:C.muted}}>{k.u}</span>
+                      </div>
+                      <div style={{fontSize:11,color:C.muted,marginTop:3}}>{k.l}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Satış Listesi Tablosu */}
+                <div style={{background:"rgba(255,255,255,.028)",border:`1px solid ${C.border}`,
+                  borderRadius:14,overflow:"hidden"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"140px 1fr 100px 100px 90px 40px",
+                    gap:8,padding:"10px 16px",background:"rgba(255,255,255,.015)",
+                    borderBottom:`1px solid ${C.border}`}}>
+                    {["Tarih","Ürünler","Müşteri","Ödeme","Tutar",""].map((h,i)=>(
+                      <div key={i} style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:.5,
+                        textTransform:"uppercase"}}>{h}</div>
+                    ))}
+                  </div>
+                  {hizliSatislar.length===0?(
+                    <div style={{padding:"40px",textAlign:"center",color:C.muted,fontSize:13}}>
+                      Henüz satış kaydı yok. <span style={{color:C.cyan,cursor:"pointer"}}
+                        onClick={()=>setHsModal(true)}>İlk satışı yap →</span>
+                    </div>
+                  ):(
+                    hizliSatislar.slice(0,50).map((s,i)=>{
+                      const tarih = new Date(s.tarih);
+                      const odemIcon = s.odemeTipi==="nakit"?"💵":s.odemeTipi==="kart"?"💳":"🏦";
+                      return(
+                        <div key={s.id} style={{display:"grid",
+                          gridTemplateColumns:"140px 1fr 100px 100px 90px 40px",
+                          gap:8,padding:"10px 16px",
+                          borderBottom:`1px solid rgba(255,255,255,.03)`,
+                          animation:`row-in .2s ${i*.03}s ease both`}}>
+                          <div>
+                            <div style={{fontSize:12,color:C.text}}>{tarih.toLocaleDateString("tr-TR")}</div>
+                            <div style={{fontSize:10,color:C.muted}}>{tarih.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}</div>
+                          </div>
+                          <div style={{fontSize:12,color:C.sub}}>
+                            {s.kalemler.map(k=>`${k.adet}× ${k.urunAd}`).join(", ")}
+                          </div>
+                          <div style={{fontSize:12,color:C.sub}}>{s.musteriAd||"—"}</div>
+                          <div><Badge label={`${odemIcon} ${s.odemeTipi}`} color={C.sky} small/></div>
+                          <div style={{fontSize:13,fontWeight:700,color:C.cyan,fontFamily:F}}>
+                            {fmt(s.toplamTutar)}₺
+                          </div>
+                          <SilButonu onDelete={()=>satirSil(s.id)} label="×" isim={`${tarih.toLocaleDateString("tr-TR")} satışı`}/>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                {/* Hızlı Satış Modal */}
+                {hsModal&&<HizliSatisModal
+                  urunler={urunler}
+                  onClose={()=>setHsModal(false)}
+                  onSave={handleSave}
+                />}
+              </div>
             );
           })()}
 
@@ -9417,6 +9538,155 @@ function HamMaddeModal({kalem,onClose,onSave,onDelete,onKopya,hamMaddeler=[],yar
           </div>
         </>
       )}
+    </Modal>
+  );
+}
+
+function HizliSatisModal({urunler, onClose, onSave}){
+  const [sepet, setSepet] = useState([]);
+  const [seciliUrun, setSeciliUrun] = useState("");
+  const [adet, setAdet] = useState(1);
+  const [musteriAd, setMusteriAd] = useState("");
+  const [musteriTel, setMusteriTel] = useState("");
+  const [odemeTipi, setOdemeTipi] = useState("nakit");
+  const [not, setNot] = useState("");
+  const stokluUrunler = urunler.filter(u => (u.stok||u.miktar||0) > 0);
+  const sepeteEkle = () => {
+    if(!seciliUrun || adet <= 0) return;
+    const urun = urunler.find(u => u.id === seciliUrun);
+    if(!urun) return;
+    const mevcutStok = (urun.stok || urun.miktar || 0);
+    const sepetteki = sepet.filter(s => s.urunId === urun.id).reduce((t,s) => t + s.adet, 0);
+    if(sepetteki + adet > mevcutStok) {
+      alert(`Yetersiz stok! ${urun.ad}: ${mevcutStok} adet mevcut, sepette ${sepetteki} adet var.`);
+      return;
+    }
+    const birimFiyat = urun.satisKdvDahil || 0;
+    const kdv = urun.satisKdv || 10;
+    setSepet(prev => [...prev, {
+      id: uid(),
+      urunId: urun.id,
+      urunAd: urun.ad,
+      adet,
+      birimFiyat,
+      kdv,
+      toplam: birimFiyat * adet,
+    }]);
+    setSeciliUrun("");
+    setAdet(1);
+  };
+  const sepettenCikar = (id) => setSepet(prev => prev.filter(s => s.id !== id));
+  const genelToplam = sepet.reduce((t,s) => t + s.toplam, 0);
+  const tamamla = () => {
+    if(sepet.length === 0) return;
+    onSave({
+      id: "hs-" + uid(),
+      tarih: new Date().toISOString(),
+      kalemler: sepet.map(s => ({
+        urunId: s.urunId,
+        urunAd: s.urunAd,
+        adet: s.adet,
+        birimFiyat: s.birimFiyat,
+        kdv: s.kdv,
+      })),
+      musteriAd: musteriAd || "—",
+      musteriTel,
+      odemeTipi,
+      toplamTutar: genelToplam,
+      not,
+      durum: "tamamlandi",
+    });
+  };
+  return(
+    <Modal title="⚡ Yeni Hızlı Satış" onClose={onClose} width={640}>
+      {/* Ürün Seçimi */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 100px auto",gap:10,alignItems:"end",marginBottom:16}}>
+        <Field label="Ürün">
+          <select value={seciliUrun} onChange={e=>setSeciliUrun(e.target.value)}
+            style={{width:"100%",background:C.s3,border:`1px solid ${C.border}`,borderRadius:9,
+              padding:"9px 12px",fontSize:13,color:seciliUrun?C.text:C.muted,cursor:"pointer"}}>
+            <option value="" style={{background:C.s2}}>— Ürün seçin —</option>
+            {stokluUrunler.map(u=>(
+              <option key={u.id} value={u.id} style={{background:C.s2}}>
+                {u.ad} ({u.stok||u.miktar||0} adet · {fmt(u.satisKdvDahil||0)}₺)
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Adet">
+          <NumInp value={adet} onChange={v=>setAdet(Math.max(1,v||1))} step={1} min={1} width={90}/>
+        </Field>
+        <Btn variant="primary" color={C.mint}
+          style={{marginBottom:14}}
+          onClick={sepeteEkle}>+ Ekle</Btn>
+      </div>
+      {/* Sepet */}
+      {sepet.length > 0 && (
+        <div style={{background:C.s2,border:`1px solid ${C.border}`,borderRadius:12,
+          padding:"12px",marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:1,
+            textTransform:"uppercase",marginBottom:10}}>🛒 Sepet</div>
+          {sepet.map((s,i)=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+              padding:"8px 10px",borderBottom:i<sepet.length-1?`1px solid ${C.border}`:"none",
+              animation:`row-in .2s ${i*.04}s ease both`}}>
+              <div style={{flex:1}}>
+                <span style={{fontSize:13,color:C.text,fontWeight:500}}>{s.urunAd}</span>
+                <span style={{fontSize:11,color:C.muted,marginLeft:8}}>×{s.adet}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:13,fontWeight:700,color:C.cyan,fontFamily:F}}>
+                  {fmt(s.toplam)}₺
+                </span>
+                <button onClick={()=>sepettenCikar(s.id)}
+                  style={{background:"rgba(220,60,60,.1)",border:`1px solid ${C.coral}30`,
+                    borderRadius:6,width:24,height:24,cursor:"pointer",color:C.coral,
+                    fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </div>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"flex-end",paddingTop:10,
+            borderTop:`1px solid ${C.border}`,marginTop:4}}>
+            <div style={{background:`${C.cyan}12`,border:`1px solid ${C.cyan}30`,
+              borderRadius:9,padding:"6px 16px"}}>
+              <span style={{fontSize:11,color:C.muted,marginRight:8}}>Toplam:</span>
+              <span style={{fontSize:18,fontWeight:800,color:C.cyan,fontFamily:F}}>
+                {fmt(genelToplam)}₺
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Müşteri & Ödeme */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+        <Field label="Müşteri Adı (opsiyonel)">
+          <TextInp value={musteriAd} onChange={setMusteriAd} placeholder="Ahmet Bey"/>
+        </Field>
+        <Field label="Telefon (opsiyonel)">
+          <TextInp value={musteriTel} onChange={setMusteriTel} placeholder="05xx..."/>
+        </Field>
+        <Field label="Ödeme Tipi">
+          <select value={odemeTipi} onChange={e=>setOdemeTipi(e.target.value)}
+            style={{width:"100%",background:C.s3,border:`1px solid ${C.border}`,borderRadius:9,
+              padding:"9px 12px",fontSize:13,color:C.text,cursor:"pointer"}}>
+            <option value="nakit" style={{background:C.s2}}>💵 Nakit</option>
+            <option value="kart" style={{background:C.s2}}>💳 Kart</option>
+            <option value="havale" style={{background:C.s2}}>🏦 Havale/EFT</option>
+          </select>
+        </Field>
+      </div>
+      <Field label="Not (opsiyonel)">
+        <TextInp value={not} onChange={setNot} placeholder="Satış notu..."/>
+      </Field>
+      {/* Butonlar */}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+        <Btn onClick={onClose}>İptal</Btn>
+        <Btn variant="primary" color={C.mint}
+          onClick={tamamla}
+          style={{opacity:sepet.length===0?.4:1,pointerEvents:sepet.length===0?"none":"auto"}}>
+          ✅ Satışı Tamamla ({fmt(genelToplam)}₺)
+        </Btn>
+      </div>
     </Modal>
   );
 }
